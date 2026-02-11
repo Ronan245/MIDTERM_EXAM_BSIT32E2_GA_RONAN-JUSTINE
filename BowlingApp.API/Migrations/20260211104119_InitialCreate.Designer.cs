@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace BowlingApp.API.Migrations
 {
     [DbContext(typeof(BowlingContext))]
-    [Migration("20260209082236_InitialCreate")]
+    [Migration("20260211104119_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />

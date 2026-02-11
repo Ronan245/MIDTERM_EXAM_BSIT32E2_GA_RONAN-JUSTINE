@@ -6,178 +6,229 @@ import RollModal from './components/RollModal'
 import GameOverModal from './components/GameOverModal'
 import { createGame, getGame, rollBall } from './api/gameService'
 
-// Environment Toggle: 'MOCK' or 'LIVE' (Default to MOCK)
-const isLive = import.meta.env.VITE_APP_MODE === 'LIVE';
+// Environment Toggle: 'MOCK' or 'LIVE'
+const isLive = import.meta.env.VITE_APP_MODE === 'LIVE'
 
 function App() {
-  const [game, setGame] = useState(null);
-  const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [game, setGame] = useState(null)
+  const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0)
+  const [loading, setLoading] = useState(false)
 
-  // Modal States
-  const [isRollModalOpen, setIsRollModalOpen] = useState(false);
-  const [selectedFrame, setSelectedFrame] = useState(null); // { playerIndex, frameNumber }
-  const [isGameOver, setIsGameOver] = useState(false);
+  const [isRollModalOpen, setIsRollModalOpen] = useState(false)
+  const [selectedFrame, setSelectedFrame] = useState(null)
+  const [isGameOver, setIsGameOver] = useState(false)
 
+  // ---------------- Start Game ----------------
   const handleStartGame = async (players) => {
-    setLoading(true);
-    setIsGameOver(false);
+    setLoading(true)
+    setIsGameOver(false)
     try {
       if (isLive) {
-        // --- LIVE MODE: Call API ---
-        console.log("Starting game in LIVE mode...");
-        const newGame = await createGame(players);
-        setGame(newGame);
+        const newGame = await createGame(players)
+        setGame(newGame)
       } else {
-        // --- MOCK MODE: Local State ---
-        console.log("Starting game in MOCK mode...");
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 500));
-
+        await new Promise(resolve => setTimeout(resolve, 300))
         setGame({
-          id: 999,
-          players: players.map((p, i) => ({ id: i, name: p, frames: [] }))
-        });
+          id: Math.floor(Math.random() * 10000),
+          players: players.map((p, i) => ({
+            id: i,
+            name: p,
+            frames: []
+          }))
+        })
       }
+      setCurrentPlayerIndex(0)
     } catch (error) {
-      console.error("Failed to start game", error);
-      alert("Error starting game. Check console.");
+      console.error('Failed to start game', error)
+      alert('Error starting game. Check console.')
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
+  // ---------------- Play Again (Same Players) ----------------
+  const handlePlayAgain = async () => {
+    if (!game) return
+
+    const playerNames = game.players.map(p => p.name)
+
+    setIsGameOver(false)
+    setCurrentPlayerIndex(0)
+    setSelectedFrame(null)
+    setIsRollModalOpen(false)
+
+    if (isLive) {
+      const newGame = await createGame(playerNames)
+      setGame(newGame)
+    } else {
+      setGame({
+        id: Math.floor(Math.random() * 10000),
+        players: playerNames.map((name, i) => ({
+          id: i,
+          name,
+          frames: []
+        }))
+      })
+    }
+  }
+
+  // ---------------- Create New Game ----------------
+  const handleCreateNewGame = () => {
+    setGame(null)
+    setIsGameOver(false)
+    setCurrentPlayerIndex(0)
+    setSelectedFrame(null)
+    setIsRollModalOpen(false)
+  }
+
+  // ---------------- Roll Ball ----------------
   const handleRoll = async (pins) => {
-    if (!game) return;
+    if (!game) return
 
-    // If coming from Modal, use selected player, otherwise current player
-    const playerIndex = selectedFrame ? selectedFrame.playerIndex : currentPlayerIndex;
-    const currentPlayer = game.players[playerIndex];
+    const playerIndex = selectedFrame ? selectedFrame.playerIndex : currentPlayerIndex
+    const player = game.players[playerIndex]
 
     try {
       if (isLive) {
-        // =============================================================================================
-        // LIVE MODE: INTEGRATE WITH BACKEND
-        // =============================================================================================
-        await rollBall(game.id, currentPlayer.id, pins);
-        const updatedGame = await getGame(game.id);
-        setGame(updatedGame);
-
-        if (updatedGame.isFinished) setIsGameOver(true);
-
+        await rollBall(game.id, player.id, pins)
+        const updatedGame = await getGame(game.id)
+        setGame(updatedGame)
+        if (updatedGame.isFinished) setIsGameOver(true)
       } else {
-        // =============================================================================================
-        // MOCK MODE: UI SIMULATION
-        // =============================================================================================
-        console.log(`[MOCK] Player ${currentPlayer.name} rolled ${pins} pins.`);
+        const newPlayers = [...game.players]
+        const currentPlayer = newPlayers[playerIndex]
+        let currentFrame = currentPlayer.frames[currentPlayer.frames.length - 1]
 
-        const newPlayers = [...game.players];
-        const player = newPlayers[playerIndex];
+        const isRoll2 = currentFrame && currentFrame.roll2 === null && currentFrame.roll1 !== 10
+        const isTenthFrame = currentPlayer.frames.length === 10
 
-        // Determine if this is Roll 1 or Roll 2 of the current frame
-        const currentFrame = player.frames[player.frames.length - 1];
-        const isRoll2 = currentFrame && currentFrame.roll2 === null && currentFrame.roll1 !== 10;
-
-        if (isRoll2) {
-          // --- ROLL 2 ---
-          // Validate: Cannot roll more than remaining pins
-          const remaining = 10 - currentFrame.roll1;
-          if (pins > remaining) {
-            alert(`Invalid Roll! Only ${remaining} pins left.`);
-            return;
-          }
-
-          currentFrame.roll2 = pins;
-          // Update score (simplified accumulation)
-          const prevScore = player.frames.length > 1 ? player.frames[player.frames.length - 2].score : 0;
-          currentFrame.score = prevScore + currentFrame.roll1 + pins; // Note: This ignores spare bonuses for simplicity in Mock
-
-          // Frame complete, move to next player
-          setCurrentPlayerIndex((prev) => (prev + 1) % game.players.length);
-
-        } else {
-          // --- ROLL 1 ---
-          // Create new frame
-          const prevScore = player.frames.length > 0 ? player.frames[player.frames.length - 1].score || 0 : 0;
-          const isStrike = pins === 10;
-
-          player.frames.push({
-            roll1: pins,
-            roll2: null, // Waiting for second roll unless strike
-            score: isStrike ? prevScore + 10 : null // Score pending if not strike (simplified)
-          });
-
-          // If Strike, frame is done (for non-10th frame), next player
-          // If not Strike, stay on this player for Roll 2
-          if (isStrike) {
-            console.log(">>> STRIKE! <<<");
-            setCurrentPlayerIndex((prev) => (prev + 1) % game.players.length);
+        if (isRoll2 || (isTenthFrame && currentFrame && currentFrame.roll2 !== null && currentFrame.roll3 === null)) {
+          if (isTenthFrame && currentFrame.roll2 !== null) {
+            currentFrame.roll3 = pins
           } else {
-            // Stay on current player
-            console.log(`Wait for Roll 2. Pins left: ${10 - pins}`);
+            const remaining = 10 - currentFrame.roll1
+            if (pins > remaining) {
+              alert(`Invalid Roll! Only ${remaining} pins left.`)
+              return
+            }
+            currentFrame.roll2 = pins
+          }
+        } else {
+          currentPlayer.frames.push({
+            roll1: pins,
+            roll2: null,
+            roll3: null
+          })
+          currentFrame = currentPlayer.frames[currentPlayer.frames.length - 1]
+        }
+
+        // ---- Cumulative scoring ----
+        const calculateCumulativeScores = (frames) => {
+          for (let i = 0; i < frames.length; i++) {
+            const frame = frames[i]
+            const r1 = frame.roll1 ?? 0
+            const r2 = frame.roll2 ?? 0
+            const r3 = frame.roll3 ?? 0
+
+            let frameScore = 0
+
+            if (i < 9) {
+              if (r1 === 10) {
+                const nextFrame = frames[i + 1] ?? {}
+                const nextNextFrame = frames[i + 2] ?? {}
+                const bonus1 = nextFrame.roll1 ?? 0
+                const bonus2 =
+                  nextFrame.roll2 != null
+                    ? nextFrame.roll2
+                    : nextNextFrame.roll1 ?? 0
+
+                frameScore = 10 + bonus1 + bonus2
+              } else if (r1 + r2 === 10) {
+                const nextFrame = frames[i + 1] ?? {}
+                frameScore = 10 + (nextFrame.roll1 ?? 0)
+              } else {
+                frameScore = r1 + r2
+              }
+            } else {
+              frameScore = r1 + r2 + r3
+            }
+
+            frame.score =
+              (i > 0 ? frames[i - 1].score ?? 0 : 0) + frameScore
           }
         }
 
-        setGame({ ...game, players: newPlayers });
+        calculateCumulativeScores(currentPlayer.frames)
 
-        // Mock Game Over Condition
-        const allFinished = newPlayers.every(p => p.frames.length >= 10 && (p.frames[9].roll2 !== null || p.frames[9].roll1 === 10)); // Simplified 10th frame check
-        if (allFinished) {
-          setIsGameOver(true);
+        setGame({ ...game, players: newPlayers })
+
+        // ---- Switch Player ----
+        const totalPlayers = newPlayers.length
+        let nextIndex = playerIndex
+        for (let offset = 1; offset <= totalPlayers; offset++) {
+          const idx = (playerIndex + offset) % totalPlayers
+          const p = newPlayers[idx]
+          const firstIncompleteFrame = p.frames.findIndex((f, i) => {
+            if (i < 9) return f.roll1 == null || (f.roll2 == null && f.roll1 !== 10)
+            return f.roll1 == null || f.roll2 == null || ((f.roll1 + f.roll2 >= 10) && f.roll3 == null)
+          })
+          if (firstIncompleteFrame !== -1 || p.frames.length < 10) {
+            nextIndex = idx
+            break
+          }
         }
+        setCurrentPlayerIndex(nextIndex)
+
+        // ---- Check Game Over ----
+        const allFinished = newPlayers.every(p => {
+          if (p.frames.length < 10) return false
+          const f = p.frames[9]
+          const tenthComplete =
+            f.roll1 != null &&
+            f.roll2 != null &&
+            ((f.roll1 + f.roll2 >= 10) ? f.roll3 != null : true)
+          return tenthComplete
+        })
+
+        if (allFinished) setIsGameOver(true)
       }
 
-      // Close modal if open
-      setIsRollModalOpen(false);
-      setSelectedFrame(null);
-
+      setIsRollModalOpen(false)
+      setSelectedFrame(null)
     } catch (error) {
-      console.error("Error submitting roll", error);
+      console.error('Error submitting roll', error)
     }
-  };
+  }
 
-  const activePlayer = game?.players[currentPlayerIndex];
+  const activePlayer = game?.players[currentPlayerIndex]
 
-  // Handler for clicking a frame in the ScoreBoard
   const onFrameClick = (playerIndex, frameNumber) => {
-    setSelectedFrame({ playerIndex, frameNumber });
-    setIsRollModalOpen(true);
-  };
+    setSelectedFrame({ playerIndex, frameNumber })
+    setIsRollModalOpen(true)
+  }
 
-
-
-  // Helper to get max pins allowed for the modal
-  const getMaxPinsForModal = () => {
-    if (!selectedFrame || !game) return 10;
-    const player = game.players[selectedFrame.playerIndex];
-    // Check if we are editing an existing frame (not supported in simple mock) or rolling for current
-    // For this mock, we assume modal is for the *current* frame/roll sequence
-    const currentFrame = player.frames[player.frames.length - 1];
-
-    // If it's Roll 2 (incomplete frame and not strike), max is remainder
-    if (currentFrame && currentFrame.roll2 === null && currentFrame.roll1 !== 10) {
-      return 10 - currentFrame.roll1;
+  useEffect(() => {
+    if (!game) return
+    const totalPlayers = game.players.length
+    for (let offset = 0; offset < totalPlayers; offset++) {
+      const idx = (currentPlayerIndex + offset) % totalPlayers
+      const player = game.players[idx]
+      const firstIncompleteFrame = player.frames.findIndex((f, i) => {
+        if (i < 9) return f.roll1 == null || (f.roll2 == null && f.roll1 !== 10)
+        return f.roll1 == null || f.roll2 == null || ((f.roll1 + f.roll2 >= 10) && f.roll3 == null)
+      })
+      if (firstIncompleteFrame !== -1 || player.frames.length < 10) {
+        setCurrentPlayerIndex(idx)
+        return
+      }
     }
-    return 10;
-  };
-
-  // Helper to know which roll number it is
-  const getRollNumberForModal = () => {
-    if (!selectedFrame || !game) return 1;
-    const player = game.players[selectedFrame.playerIndex];
-    const currentFrame = player.frames[player.frames.length - 1];
-    if (currentFrame && currentFrame.roll2 === null && currentFrame.roll1 !== 10) {
-      return 2;
-    }
-    return 1;
-  };
+  }, [game])
 
   return (
     <div className="min-h-screen bg-gray-100 pb-10">
-      {/* API Status Bar */}
       {!isLive ? (
         <div className="bg-red-600 text-white text-center py-2 font-bold shadow-md">
-          ⚠️ MOCK MODE: Not Connected to API (Check .env.local)
+          ⚠️ MOCK MODE: Not Connected to API
         </div>
       ) : (
         <div className="bg-green-600 text-white text-center py-2 font-bold shadow-md">
@@ -187,7 +238,9 @@ function App() {
 
       <div className="px-4 py-10">
         <header className="text-center mb-10">
-          <h1 className="text-4xl font-extrabold text-blue-900 tracking-tight">Bowling Score Keeper 🎳</h1>
+          <h1 className="text-4xl font-extrabold text-blue-900 tracking-tight">
+            Bowling Score Keeper 🎳
+          </h1>
           <p className="text-gray-600 mt-2">Midterm Exam Application</p>
         </header>
 
@@ -198,13 +251,12 @@ function App() {
             <div className="space-y-8">
               <div className="bg-white p-6 rounded-xl shadow-lg relative">
                 <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-2xl font-bold text-gray-800">Game #{game.id}</h2>
-                  <div className="flex gap-3">
-
-                    <span className="bg-blue-100 text-blue-800 px-4 py-2 rounded-full text-sm font-bold flex items-center">
-                      Current Turn: {activePlayer?.name}
-                    </span>
-                  </div>
+                  <h2 className="text-2xl font-bold text-gray-800">
+                    Game #{game.id}
+                  </h2>
+                  <span className="bg-blue-100 text-blue-800 px-4 py-2 rounded-full text-sm font-bold">
+                    Current Turn: {activePlayer?.name}
+                  </span>
                 </div>
 
                 <ScoreBoard
@@ -212,14 +264,11 @@ function App() {
                   activePlayerIndex={currentPlayerIndex}
                   onFrameClick={onFrameClick}
                 />
-
-
               </div>
             </div>
           )}
         </main>
 
-        {/* Modals */}
         {game && (
           <RollModal
             isOpen={isRollModalOpen}
@@ -227,17 +276,15 @@ function App() {
             onRoll={handleRoll}
             playerName={selectedFrame ? game.players[selectedFrame.playerIndex].name : ''}
             frameNumber={selectedFrame?.frameNumber}
-            rollNumber={getRollNumberForModal()}
-            maxPins={getMaxPinsForModal()}
           />
         )}
 
         <GameOverModal
           isOpen={isGameOver}
           players={game?.players || []}
-          onRestart={() => setGame(null)}
+          onPlayAgain={handlePlayAgain}
+          onNewGame={handleCreateNewGame}
         />
-
       </div>
     </div>
   )

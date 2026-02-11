@@ -3,8 +3,7 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-
+// ---------------- Add Services ----------------
 builder.Services.AddControllers();
 builder.Services.AddDbContext<BowlingContext>(options =>
     options.UseSqlite(
@@ -12,13 +11,24 @@ builder.Services.AddDbContext<BowlingContext>(options =>
     )
 );
 
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+// ---------------- Enable CORS ----------------
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        policy.WithOrigins("http://localhost:5173") // Frontend URL
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
+
+// Swagger / OpenAPI
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// ---------------- Configure Middleware ----------------
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -27,8 +37,10 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-app.UseAuthorization();
+// Enable CORS BEFORE Authorization and MapControllers
+app.UseCors("AllowFrontend");
 
+app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
